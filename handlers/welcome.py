@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from contextlib import suppress
@@ -19,6 +21,7 @@ from aiogram.types import (
 from storage import get_button, get_rules, get_ttl
 
 from .audit import log_event, mention
+from .ephemeral import delete_ephemeral, pop_pending, send_ephemeral
 
 logger = logging.getLogger(__name__)
 router = Router(name="welcome")
@@ -58,13 +61,15 @@ UNMUTED = ChatPermissions(
 )
 
 
-def _agree_keyboard(user_id: int, button_text: str) -> InlineKeyboardMarkup:
+def _agree_keyboard(
+    chat_id: int, user_id: int, button_text: str
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=button_text,
-                    callback_data=f"{AGREE_PREFIX}:{user_id}",
+                    callback_data=f"{AGREE_PREFIX}:{chat_id}:{user_id}",
                 )
             ]
         ]
@@ -76,7 +81,16 @@ def _mention(user_id: int, name: str) -> str:
     return f'<a href="tg://user?id={user_id}">{safe}</a>'
 
 
-async def _expire_welcome(
+async def _expire_ephemeral(
+    bot: Bot, chat_id: int, user_id: int, emid: int, ttl: int
+) -> None:
+    await asyncio.sleep(ttl)
+    if pop_pending(chat_id, user_id) is None:
+        return
+    await delete_ephemeral(bot, chat_id, user_id, emid)
+
+
+async def _expire_visible(
     bot: Bot, chat_id: int, message_id: int, ttl: int
 ) -> None:
     await asyncio.sleep(ttl)
@@ -103,17 +117,28 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
     rules = await get_rules(chat_id)
     button_text = await get_button(chat_id)
     text = f"Привет, {_mention(user_id, user.full_name)}!\n\n{rules}"
-    msg = await bot.send_message(
-        chat_id,
-        text,
-        reply_markup=_agree_keyboard(user_id, button_text),
-    )
-
+    keyboard = _agree_keyboard(chat_id, user_id, button_text)
     ttl = await get_ttl(chat_id)
-    if ttl > 0:
-        asyncio.create_task(
-            _expire_welcome(bot, chat_id, msg.message_id, ttl)
+
+    emid = await send_ephemeral(bot, chat_id, user_id, text, keyboard)
+    if emid is not None:
+        if ttl > 0:
+            asyncio.create_task(
+                _expire_ephemeral(bot, chat_id, user_id, emid, ttl)
+            )
+    else:
+        # Ephemeral not delivered (old client / API refused) — fall back to
+        # a normal group message.
+        logger.info(
+            "Ephemeral send failed for user %s in chat %s, falling back",
+            user_id,
+            chat_id,
         )
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        if ttl > 0:
+            asyncio.create_task(
+                _expire_visible(bot, chat_id, msg.message_id, ttl)
+            )
 
     actor = event.from_user
     if actor is not None and actor.id != user_id:
@@ -132,9 +157,13 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 
 @router.callback_query(F.data.startswith(f"{AGREE_PREFIX}:"))
 async def on_agree(call: CallbackQuery, bot: Bot) -> None:
-    _, _, target_str = call.data.partition(":")
+    parts = (call.data or "").split(":")
+    if len(parts) != 3:
+        await call.answer("Некорректная кнопка", show_alert=True)
+        return
     try:
-        target_id = int(target_str)
+        chat_id = int(parts[1])
+        target_id = int(parts[2])
     except ValueError:
         await call.answer("Некорректная кнопка", show_alert=True)
         return
@@ -143,17 +172,17 @@ async def on_agree(call: CallbackQuery, bot: Bot) -> None:
         await call.answer("Эта кнопка не для вас.", show_alert=True)
         return
 
-    if call.message is None:
-        await call.answer()
-        return
-
-    chat_id = call.message.chat.id
     with suppress(TelegramBadRequest):
         await bot.restrict_chat_member(
             chat_id, target_id, permissions=UNMUTED
         )
-    with suppress(TelegramBadRequest):
-        await bot.delete_message(chat_id, call.message.message_id)
+
+    emid = pop_pending(chat_id, target_id)
+    if emid is not None:
+        await delete_ephemeral(bot, chat_id, target_id, emid)
+    elif call.message is not None:
+        with suppress(TelegramBadRequest):
+            await bot.delete_message(chat_id, call.message.message_id)
 
     await call.answer("Добро пожаловать!")
 
