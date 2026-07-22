@@ -131,3 +131,29 @@ async def reset_log_chat(chat_id: int) -> None:
             if not entry:
                 data.pop(str(chat_id), None)
         _write(data)
+
+
+async def get_captcha(chat_id: int) -> str:
+    async with _lock:
+        raw = _read().get(str(chat_id), {}).get("captcha")
+        if isinstance(raw, str):
+            return raw
+        return "none"
+
+
+async def set_captcha(chat_id: int, mode: str) -> None:
+    async with _lock:
+        data = _read()
+        _entry(data, chat_id)["captcha"] = mode
+        _write(data)
+
+
+async def reset_captcha(chat_id: int) -> None:
+    async with _lock:
+        data = _read()
+        entry = data.get(str(chat_id))
+        if entry is not None:
+            entry.pop("captcha", None)
+            if not entry:
+                data.pop(str(chat_id), None)
+        _write(data)

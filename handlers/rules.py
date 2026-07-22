@@ -8,15 +8,20 @@ from aiogram.types import Message
 
 from storage import (
     get_button,
+    get_captcha,
     get_rules,
     get_ttl,
     reset_button,
+    reset_captcha,
     reset_rules,
     reset_ttl,
     set_button,
+    set_captcha,
     set_rules,
     set_ttl,
 )
+
+from .captcha import CAPTCHA_MODES
 
 MAX_TTL = 86400
 MAX_BUTTON_LEN = 64
@@ -208,3 +213,57 @@ async def cmd_resetbutton(message: Message, bot: Bot) -> None:
 
     await reset_button(message.chat.id)
     await message.reply("Текст кнопки сброшен к значению по умолчанию.")
+
+
+@router.message(Command("captcha"))
+async def cmd_captcha(message: Message) -> None:
+    mode = await get_captcha(message.chat.id)
+    modes = ", ".join(f"<code>{m}</code>" for m in CAPTCHA_MODES)
+    await message.reply(
+        f"Режим капчи: <b>{mode}</b>\nДоступные: {modes}"
+    )
+
+
+@router.message(Command("setcaptcha"))
+async def cmd_setcaptcha(
+    message: Message, command: CommandObject, bot: Bot
+) -> None:
+    if message.chat.type == ChatType.PRIVATE:
+        await message.reply("Команда работает только в группах.")
+        return
+    if message.from_user is None or not await _is_admin(
+        bot, message.chat.id, message.from_user.id
+    ):
+        await message.reply(
+            "Только администраторы могут менять режим капчи."
+        )
+        return
+
+    mode = (command.args or "").strip().lower()
+    if mode not in CAPTCHA_MODES:
+        modes = ", ".join(f"<code>{m}</code>" for m in CAPTCHA_MODES)
+        await message.reply(
+            f"Использование: <code>/setcaptcha МОД</code>\n"
+            f"Доступные режимы: {modes}"
+        )
+        return
+
+    await set_captcha(message.chat.id, mode)
+    await message.reply(f"Режим капчи: <b>{mode}</b>")
+
+
+@router.message(Command("resetcaptcha"))
+async def cmd_resetcaptcha(message: Message, bot: Bot) -> None:
+    if message.chat.type == ChatType.PRIVATE:
+        await message.reply("Команда работает только в группах.")
+        return
+    if message.from_user is None or not await _is_admin(
+        bot, message.chat.id, message.from_user.id
+    ):
+        await message.reply(
+            "Только администраторы могут сбрасывать режим капчи."
+        )
+        return
+
+    await reset_captcha(message.chat.id)
+    await message.reply("Режим капчи сброшен к значению по умолчанию (none).")

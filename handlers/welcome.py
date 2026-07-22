@@ -14,13 +14,12 @@ from aiogram.types import (
     CallbackQuery,
     ChatMemberUpdated,
     ChatPermissions,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     User,
 )
 
-from storage import get_button, get_rules, get_ttl
+from storage import get_button, get_captcha, get_rules, get_ttl
 
+from . import captcha
 from .audit import log_event, mention
 from .ephemeral import delete_ephemeral, pop_pending, send_ephemeral
 
@@ -64,21 +63,6 @@ UNMUTED = ChatPermissions(
     can_pin_messages=False,
     can_change_info=False,
 )
-
-
-def _agree_keyboard(
-    chat_id: int, user_id: int, button_text: str
-) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"{AGREE_PREFIX}:{chat_id}:{user_id}",
-                )
-            ]
-        ]
-    )
 
 
 def _mention(user_id: int, name: str) -> str:
@@ -178,11 +162,16 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
     rules = await get_rules(chat_id)
     button_text = await get_button(chat_id)
     ttl = await get_ttl(chat_id)
+    mode = await get_captcha(chat_id)
+    challenge = captcha.build(
+        mode, chat_id, user_id, AGREE_PREFIX, button_text
+    )
+    prompt = f"\n\n{challenge.text}" if challenge.text else ""
     text = (
         f"Привет, {_mention(user_id, user.full_name)}!\n\n"
-        f"{rules}{_kick_warning(ttl)}"
+        f"{rules}{prompt}{_kick_warning(ttl)}"
     )
-    keyboard = _agree_keyboard(chat_id, user_id, button_text)
+    keyboard = challenge.keyboard
 
     waiting.add((chat_id, user_id))
 
@@ -222,18 +211,25 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 @router.callback_query(F.data.startswith(f"{AGREE_PREFIX}:"))
 async def on_agree(call: CallbackQuery, bot: Bot) -> None:
     parts = (call.data or "").split(":")
-    if len(parts) != 3:
+    if len(parts) != 4:
         await call.answer("Некорректная кнопка", show_alert=True)
         return
     try:
         chat_id = int(parts[1])
         target_id = int(parts[2])
+        correct = parts[3] == "1"
     except ValueError:
         await call.answer("Некорректная кнопка", show_alert=True)
         return
 
     if call.from_user.id != target_id:
         await call.answer("Эта кнопка не для вас.", show_alert=True)
+        return
+
+    if not correct:
+        await call.answer(
+            "❌ Неверно, попробуй ещё раз.", show_alert=True
+        )
         return
 
     waiting.discard((chat_id, target_id))
