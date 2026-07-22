@@ -16,6 +16,7 @@ from aiogram.types import (
     ChatPermissions,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    User,
 )
 
 from storage import get_button, get_rules, get_ttl
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 router = Router(name="welcome")
 
 AGREE_PREFIX = "rules_agree"
+
+# (chat_id, user_id) of members still waiting to press the button.
+# Populated at send time; removed on click or on kick.
+waiting: set[tuple[int, int]] = set()
 
 MUTED = ChatPermissions(
     can_send_messages=False,
@@ -81,21 +86,70 @@ def _mention(user_id: int, name: str) -> str:
     return f'<a href="tg://user?id={user_id}">{safe}</a>'
 
 
+def _kick_warning(ttl: int) -> str:
+    if ttl <= 0:
+        return ""
+    return (
+        f"\n\n⚠️ <b>ЕСЛИ НЕ НАЖМЁШЬ КНОПКУ ЗА {ttl} СЕК — "
+        f"БОТ ТЕБЯ КИКНЕТ.</b>"
+    )
+
+
+async def _kick(bot: Bot, chat_id: int, user_id: int) -> bool:
+    try:
+        await bot.ban_chat_member(chat_id, user_id)
+    except TelegramBadRequest as e:
+        logger.warning("ban_chat_member failed: %s", e)
+        return False
+    with suppress(TelegramBadRequest):
+        await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
+    return True
+
+
 async def _expire_ephemeral(
-    bot: Bot, chat_id: int, user_id: int, emid: int, ttl: int
+    bot: Bot,
+    chat_id: int,
+    user: User,
+    emid: int,
+    ttl: int,
 ) -> None:
     await asyncio.sleep(ttl)
-    if pop_pending(chat_id, user_id) is None:
+    user_id = user.id
+    key = (chat_id, user_id)
+    if key not in waiting:
         return
+    waiting.discard(key)
+    pop_pending(chat_id, user_id)
     await delete_ephemeral(bot, chat_id, user_id, emid)
+    if await _kick(bot, chat_id, user_id):
+        await log_event(
+            bot,
+            chat_id,
+            f"👢 {mention(user)} не принял правила за {ttl} сек — кикнут",
+        )
 
 
 async def _expire_visible(
-    bot: Bot, chat_id: int, message_id: int, ttl: int
+    bot: Bot,
+    chat_id: int,
+    user: User,
+    message_id: int,
+    ttl: int,
 ) -> None:
     await asyncio.sleep(ttl)
+    user_id = user.id
+    key = (chat_id, user_id)
+    if key not in waiting:
+        return
+    waiting.discard(key)
     with suppress(TelegramBadRequest):
         await bot.delete_message(chat_id, message_id)
+    if await _kick(bot, chat_id, user_id):
+        await log_event(
+            bot,
+            chat_id,
+            f"👢 {mention(user)} не принял правила за {ttl} сек — кикнут",
+        )
 
 
 @router.chat_member(
@@ -116,19 +170,22 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 
     rules = await get_rules(chat_id)
     button_text = await get_button(chat_id)
-    text = f"Привет, {_mention(user_id, user.full_name)}!\n\n{rules}"
-    keyboard = _agree_keyboard(chat_id, user_id, button_text)
     ttl = await get_ttl(chat_id)
+    text = (
+        f"Привет, {_mention(user_id, user.full_name)}!\n\n"
+        f"{rules}{_kick_warning(ttl)}"
+    )
+    keyboard = _agree_keyboard(chat_id, user_id, button_text)
+
+    waiting.add((chat_id, user_id))
 
     emid = await send_ephemeral(bot, chat_id, user_id, text, keyboard)
     if emid is not None:
         if ttl > 0:
             asyncio.create_task(
-                _expire_ephemeral(bot, chat_id, user_id, emid, ttl)
+                _expire_ephemeral(bot, chat_id, user, emid, ttl)
             )
     else:
-        # Ephemeral not delivered (old client / API refused) — fall back to
-        # a normal group message.
         logger.info(
             "Ephemeral send failed for user %s in chat %s, falling back",
             user_id,
@@ -137,7 +194,7 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
         msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
         if ttl > 0:
             asyncio.create_task(
-                _expire_visible(bot, chat_id, msg.message_id, ttl)
+                _expire_visible(bot, chat_id, user, msg.message_id, ttl)
             )
 
     actor = event.from_user
@@ -171,6 +228,8 @@ async def on_agree(call: CallbackQuery, bot: Bot) -> None:
     if call.from_user.id != target_id:
         await call.answer("Эта кнопка не для вас.", show_alert=True)
         return
+
+    waiting.discard((chat_id, target_id))
 
     with suppress(TelegramBadRequest):
         await bot.restrict_chat_member(
