@@ -163,6 +163,13 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
     chat_id = event.chat.id
     user_id = user.id
 
+    if event.chat.type != "supergroup":
+        logger.warning(
+            "Chat %s is %r, not supergroup — restrict_chat_member won't work",
+            chat_id,
+            event.chat.type,
+        )
+
     with suppress(TelegramBadRequest):
         await bot.restrict_chat_member(
             chat_id, user_id, permissions=MUTED
