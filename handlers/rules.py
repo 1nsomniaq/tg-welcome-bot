@@ -40,9 +40,12 @@ async def _is_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     return member.status in ADMIN_STATUSES
 
 
-@router.message(Command("chatid"))
 async def cmd_chatid(message: Message) -> None:
     await message.reply(f"chat_id: <code>{message.chat.id}</code>")
+
+
+router.message.register(cmd_chatid, Command("chatid"))
+router.channel_post.register(cmd_chatid, Command("chatid"))
 
 
 @router.message(Command("rules"))
