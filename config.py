@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 BUTTON_TEXT = "✅ I agree to the rules"
 
-RULES_TEXT = """<b>Правила чата</b>
+RULES_TEXT = """<b>Chat rules</b>
 
-1. Уважайте других участников.
-2. Никакого спама и рекламы.
-3. Обсуждаем только темы, связанные с чатом.
-4. За нарушения — мут или бан.
+1. Respect other members.
+2. No spam or advertising.
+3. Stay on topic.
+4. Violations result in mute or ban.
 
-Нажмите кнопку ниже, чтобы подтвердить, что вы прочитали и принимаете правила."""
+Tap the button below to confirm you've read and accept the rules."""
 
 
 @dataclass(frozen=True)

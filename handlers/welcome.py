@@ -100,7 +100,7 @@ async def _expire_ephemeral(
         await log_event(
             bot,
             chat_id,
-            f"👢 {mention(user)} не принял правила за {ttl} сек — кикнут",
+            f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
         )
 
 
@@ -123,7 +123,7 @@ async def _expire_visible(
         await log_event(
             bot,
             chat_id,
-            f"👢 {mention(user)} не принял правила за {ttl} сек — кикнут",
+            f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
         )
 
 
@@ -159,7 +159,7 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
     )
     prompt = f"\n\n{challenge.text}" if challenge.text else ""
     text = (
-        f"Привет, {_mention(user_id, user.full_name)}!\n\n"
+        f"Hi, {_mention(user_id, user.full_name)}!\n\n"
         f"{rules}{prompt}"
     )
     keyboard = challenge.keyboard
@@ -189,13 +189,13 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
         await log_event(
             bot,
             chat_id,
-            f"➕ {mention(actor)} добавил {mention(user)} (ждём согласия с правилами)",
+            f"➕ {mention(actor)} added {mention(user)} (waiting for rules acceptance)",
         )
     else:
         await log_event(
             bot,
             chat_id,
-            f"➕ {mention(user)} присоединился (ждём согласия с правилами)",
+            f"➕ {mention(user)} joined (waiting for rules acceptance)",
         )
 
 
@@ -203,23 +203,23 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 async def on_agree(call: CallbackQuery, bot: Bot) -> None:
     parts = (call.data or "").split(":")
     if len(parts) != 4:
-        await call.answer("Некорректная кнопка", show_alert=True)
+        await call.answer("Invalid button", show_alert=True)
         return
     try:
         chat_id = int(parts[1])
         target_id = int(parts[2])
         correct = parts[3] == "1"
     except ValueError:
-        await call.answer("Некорректная кнопка", show_alert=True)
+        await call.answer("Invalid button", show_alert=True)
         return
 
     if call.from_user.id != target_id:
-        await call.answer("Эта кнопка не для вас.", show_alert=True)
+        await call.answer("This button is not for you.", show_alert=True)
         return
 
     if not correct:
         await call.answer(
-            "❌ Неверно, попробуй ещё раз.", show_alert=True
+            "❌ Wrong, try again.", show_alert=True
         )
         return
 
@@ -237,10 +237,10 @@ async def on_agree(call: CallbackQuery, bot: Bot) -> None:
         with suppress(TelegramBadRequest):
             await bot.delete_message(chat_id, call.message.message_id)
 
-    await call.answer("Добро пожаловать!")
+    await call.answer("Welcome!")
 
     await log_event(
         bot,
         chat_id,
-        f"✅ {mention(call.from_user)} принял правила",
+        f"✅ {mention(call.from_user)} accepted the rules",
     )

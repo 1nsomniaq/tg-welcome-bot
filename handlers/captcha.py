@@ -79,7 +79,7 @@ def _math(chat_id: int, user_id: int, agree_prefix: str) -> Challenge:
         for opt in options
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[buttons[:2], buttons[2:]])
-    text = f"🧮 Реши, чтобы принять правила: <b>{a} {op} {b} = ?</b>"
+    text = f"🧮 Solve to accept the rules: <b>{a} {op} {b} = ?</b>"
     return Challenge(text=text, keyboard=kb)
 
 
@@ -94,5 +94,5 @@ def _emoji(chat_id: int, user_id: int, agree_prefix: str) -> Challenge:
         for e in options
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[buttons[:3], buttons[3:]])
-    text = f"🧩 Нажми <b>{correct}</b>, чтобы принять правила."
+    text = f"🧩 Tap <b>{correct}</b> to accept the rules."
     return Challenge(text=text, keyboard=kb)

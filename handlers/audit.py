@@ -19,7 +19,7 @@ ADMIN_STATUSES = {"creator", "administrator"}
 
 def mention(user: User | None) -> str:
     if user is None:
-        return "неизвестно"
+        return "unknown"
     name = (user.full_name or str(user.id)).replace("<", "&lt;").replace(">", "&gt;")
     return f'<a href="tg://user?id={user.id}">{name}</a>'
 
@@ -71,26 +71,26 @@ async def on_member_update(event: ChatMemberUpdated, bot: Bot) -> None:
     who = mention(user)
 
     if new == ChatMemberStatus.KICKED:
-        by = mention(actor) if not is_self_action else "система"
+        by = mention(actor) if not is_self_action else "system"
         await log_event(
-            bot, event.chat.id, f"🚫 {where}: {by} забанил {who}"
+            bot, event.chat.id, f"🚫 {where}: {by} banned {who}"
         )
         return
 
     if old == ChatMemberStatus.KICKED and new != ChatMemberStatus.KICKED:
-        by = mention(actor) if not is_self_action else "система"
+        by = mention(actor) if not is_self_action else "system"
         await log_event(
-            bot, event.chat.id, f"♻️ {where}: {by} разбанил {who}"
+            bot, event.chat.id, f"♻️ {where}: {by} unbanned {who}"
         )
         return
 
     if new == ChatMemberStatus.LEFT and old in PRESENT_STATUSES:
         if is_self_action:
-            await log_event(bot, event.chat.id, f"👋 {where}: {who} вышел")
+            await log_event(bot, event.chat.id, f"👋 {where}: {who} left")
         else:
             by = mention(actor)
             await log_event(
-                bot, event.chat.id, f"👢 {where}: {by} удалил {who}"
+                bot, event.chat.id, f"👢 {where}: {by} removed {who}"
             )
         return
 
@@ -99,11 +99,11 @@ async def on_member_update(event: ChatMemberUpdated, bot: Bot) -> None:
         ChatMemberStatus.KICKED,
     }:
         if is_self_action:
-            await log_event(bot, event.chat.id, f"➕ {where}: {who} присоединился")
+            await log_event(bot, event.chat.id, f"➕ {where}: {who} joined")
         else:
             by = mention(actor)
             await log_event(
-                bot, event.chat.id, f"➕ {where}: {by} добавил {who}"
+                bot, event.chat.id, f"➕ {where}: {by} added {who}"
             )
         return
 
@@ -112,9 +112,9 @@ async def on_member_update(event: ChatMemberUpdated, bot: Bot) -> None:
 async def cmd_log(message: Message) -> None:
     log_chat_id = await get_log_chat(message.chat.id)
     if log_chat_id is None:
-        await message.reply("Лог-чат не задан.")
+        await message.reply("Log chat is not set.")
     else:
-        await message.reply(f"Лог-чат: <code>{log_chat_id}</code>")
+        await message.reply(f"Log chat: <code>{log_chat_id}</code>")
 
 
 @router.message(Command("setlog"))
@@ -122,12 +122,12 @@ async def cmd_setlog(
     message: Message, command: CommandObject, bot: Bot
 ) -> None:
     if message.chat.type == ChatType.PRIVATE:
-        await message.reply("Команда работает только в группах.")
+        await message.reply("This command only works in groups.")
         return
     if message.from_user is None or not await _is_admin(
         bot, message.chat.id, message.from_user.id
     ):
-        await message.reply("Только администраторы могут менять лог-чат.")
+        await message.reply("Only admins can change the log chat.")
         return
 
     log_chat_id: int | None = None
@@ -136,7 +136,7 @@ async def cmd_setlog(
         try:
             log_chat_id = int(arg)
         except ValueError:
-            await message.reply("Ожидается численный chat_id.")
+            await message.reply("Expected a numeric chat_id.")
             return
     elif (
         message.reply_to_message is not None
@@ -145,9 +145,9 @@ async def cmd_setlog(
         log_chat_id = message.reply_to_message.forward_from_chat.id
     else:
         await message.reply(
-            "Использование:\n"
+            "Usage:\n"
             "  <code>/setlog CHAT_ID</code>\n"
-            "или ответом на пересланное из лог-чата сообщение: "
+            "or reply to a message forwarded from the log chat: "
             "<code>/setlog</code>."
         )
         return
@@ -155,30 +155,30 @@ async def cmd_setlog(
     try:
         await bot.send_message(
             log_chat_id,
-            f"Этот чат назначен лог-чатом для {chat_ref(message)}.",
+            f"This chat is now the log chat for {chat_ref(message)}.",
             disable_notification=True,
         )
     except TelegramBadRequest as e:
         await message.reply(
-            f"Не удалось написать в лог-чат: {e.message}. "
-            f"Добавьте бота в тот чат."
+            f"Couldn't post to the log chat: {e.message}. "
+            f"Add the bot to that chat."
         )
         return
 
     await set_log_chat(message.chat.id, log_chat_id)
-    await message.reply("Лог-чат сохранён.")
+    await message.reply("Log chat saved.")
 
 
 @router.message(Command("unsetlog"))
 async def cmd_unsetlog(message: Message, bot: Bot) -> None:
     if message.chat.type == ChatType.PRIVATE:
-        await message.reply("Команда работает только в группах.")
+        await message.reply("This command only works in groups.")
         return
     if message.from_user is None or not await _is_admin(
         bot, message.chat.id, message.from_user.id
     ):
-        await message.reply("Только администраторы могут отключать лог-чат.")
+        await message.reply("Only admins can disable the log chat.")
         return
 
     await reset_log_chat(message.chat.id)
-    await message.reply("Лог-чат отключён.")
+    await message.reply("Log chat disabled.")
