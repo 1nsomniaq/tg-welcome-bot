@@ -11,6 +11,8 @@ from aiogram.types import ChatMemberUpdated, Message, User
 
 from storage import get_log_chat, reset_log_chat, set_log_chat
 
+from .ephemeral import reply_ephemeral
+
 logger = logging.getLogger(__name__)
 router = Router(name="audit")
 
@@ -112,9 +114,9 @@ async def on_member_update(event: ChatMemberUpdated, bot: Bot) -> None:
 async def cmd_log(message: Message) -> None:
     log_chat_id = await get_log_chat(message.chat.id)
     if log_chat_id is None:
-        await message.reply("Log chat is not set.")
+        await reply_ephemeral(message, "Log chat is not set.")
     else:
-        await message.reply(f"Log chat: <code>{log_chat_id}</code>")
+        await reply_ephemeral(message, f"Log chat: <code>{log_chat_id}</code>")
 
 
 @router.message(Command("setlog"))
@@ -122,12 +124,12 @@ async def cmd_setlog(
     message: Message, command: CommandObject, bot: Bot
 ) -> None:
     if message.chat.type == ChatType.PRIVATE:
-        await message.reply("This command only works in groups.")
+        await reply_ephemeral(message, "This command only works in groups.")
         return
     if message.from_user is None or not await _is_admin(
         bot, message.chat.id, message.from_user.id
     ):
-        await message.reply("Only admins can change the log chat.")
+        await reply_ephemeral(message, "Only admins can change the log chat.")
         return
 
     log_chat_id: int | None = None
@@ -136,7 +138,7 @@ async def cmd_setlog(
         try:
             log_chat_id = int(arg)
         except ValueError:
-            await message.reply("Expected a numeric chat_id.")
+            await reply_ephemeral(message, "Expected a numeric chat_id.")
             return
     elif (
         message.reply_to_message is not None
@@ -144,7 +146,7 @@ async def cmd_setlog(
     ):
         log_chat_id = message.reply_to_message.forward_from_chat.id
     else:
-        await message.reply(
+        await reply_ephemeral(message,
             "Usage:\n"
             "  <code>/setlog CHAT_ID</code>\n"
             "or reply to a message forwarded from the log chat: "
@@ -159,26 +161,26 @@ async def cmd_setlog(
             disable_notification=True,
         )
     except TelegramBadRequest as e:
-        await message.reply(
+        await reply_ephemeral(message,
             f"Couldn't post to the log chat: {e.message}. "
             f"Add the bot to that chat."
         )
         return
 
     await set_log_chat(message.chat.id, log_chat_id)
-    await message.reply("Log chat saved.")
+    await reply_ephemeral(message, "Log chat saved.")
 
 
 @router.message(Command("unsetlog"))
 async def cmd_unsetlog(message: Message, bot: Bot) -> None:
     if message.chat.type == ChatType.PRIVATE:
-        await message.reply("This command only works in groups.")
+        await reply_ephemeral(message, "This command only works in groups.")
         return
     if message.from_user is None or not await _is_admin(
         bot, message.chat.id, message.from_user.id
     ):
-        await message.reply("Only admins can disable the log chat.")
+        await reply_ephemeral(message, "Only admins can disable the log chat.")
         return
 
     await reset_log_chat(message.chat.id)
-    await message.reply("Log chat disabled.")
+    await reply_ephemeral(message, "Log chat disabled.")

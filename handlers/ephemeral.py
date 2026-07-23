@@ -5,7 +5,7 @@ from typing import Any
 
 import aiohttp
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, Message
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ async def send_ephemeral(
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
     parse_mode: str = "HTML",
+    track: bool = True,
 ) -> int | None:
     payload: dict[str, Any] = {
         "chat_id": chat_id,
@@ -60,13 +61,30 @@ async def send_ephemeral(
         return None
     emid = result.get("ephemeral_message_id")
     if isinstance(emid, int):
-        pending[(chat_id, receiver_user_id)] = emid
+        if track:
+            pending[(chat_id, receiver_user_id)] = emid
         return emid
     logger.warning(
         "sendMessage returned no ephemeral_message_id; keys=%s",
         list(result.keys()),
     )
     return None
+
+
+async def reply_ephemeral(message: Message, text: str) -> None:
+    # Bot's reply to an admin command, visible only to the actor.
+    # Falls back to a public reply if ephemeral isn't available
+    # (private chats, non-supergroups, missing bot permissions).
+    bot = message.bot
+    user_id = message.from_user.id if message.from_user else None
+    if bot is None or user_id is None:
+        await message.reply(text)
+        return
+    emid = await send_ephemeral(
+        bot, message.chat.id, user_id, text, track=False,
+    )
+    if emid is None:
+        await message.reply(text)
 
 
 async def delete_ephemeral(
