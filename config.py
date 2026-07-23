@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 
-BUTTON_TEXT = "✅ Я согласен с правилами"
+BUTTON_TEXT = "✅ I agree to the rules"
 
 RULES_TEXT = """<b>Правила чата</b>
 

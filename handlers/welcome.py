@@ -70,15 +70,6 @@ def _mention(user_id: int, name: str) -> str:
     return f'<a href="tg://user?id={user_id}">{safe}</a>'
 
 
-def _kick_warning(ttl: int) -> str:
-    if ttl <= 0:
-        return ""
-    return (
-        f"\n\n⚠️ <b>ЕСЛИ НЕ НАЖМЁШЬ КНОПКУ ЗА {ttl} СЕК — "
-        f"БОТ ТЕБЯ КИКНЕТ.</b>"
-    )
-
-
 async def _kick(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
         await bot.ban_chat_member(chat_id, user_id)
@@ -169,7 +160,7 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
     prompt = f"\n\n{challenge.text}" if challenge.text else ""
     text = (
         f"Привет, {_mention(user_id, user.full_name)}!\n\n"
-        f"{rules}{prompt}{_kick_warning(ttl)}"
+        f"{rules}{prompt}"
     )
     keyboard = challenge.keyboard
 
