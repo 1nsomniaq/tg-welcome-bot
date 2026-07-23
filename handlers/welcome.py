@@ -158,10 +158,13 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
         mode, chat_id, user_id, AGREE_PREFIX, button_text
     )
     prompt = f"\n\n{challenge.text}" if challenge.text else ""
-    text = (
-        f"Hi, {_mention(user_id, user.full_name)}!\n\n"
-        f"{rules}{prompt}"
-    )
+    # Use @username for an actual notification ping; fall back to a
+    # text_mention link when the user has no public username.
+    if user.username:
+        greeting = f"Hi, @{user.username}!"
+    else:
+        greeting = f"Hi, {_mention(user_id, user.full_name)}!"
+    text = f"{greeting}\n\n{rules}{prompt}"
     keyboard = challenge.keyboard
 
     waiting.add((chat_id, user_id))
