@@ -51,12 +51,21 @@ async def send_ephemeral(
             exclude_none=True, mode="json"
         )
     result = await _call(bot, "sendMessage", payload)
+    logger.info(
+        "sendMessage(receiver_user_id=%s) -> %r",
+        receiver_user_id,
+        result,
+    )
     if not isinstance(result, dict):
         return None
     emid = result.get("ephemeral_message_id")
     if isinstance(emid, int):
         pending[(chat_id, receiver_user_id)] = emid
         return emid
+    logger.warning(
+        "sendMessage returned no ephemeral_message_id; keys=%s",
+        list(result.keys()),
+    )
     return None
 
 
