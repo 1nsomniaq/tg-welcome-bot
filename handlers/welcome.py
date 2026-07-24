@@ -17,10 +17,10 @@ from aiogram.types import (
     User,
 )
 
-from storage import get_button, get_captcha, get_rules, get_ttl
+from storage import get_button, get_captcha, get_kick, get_rules, get_ttl
 
 from . import captcha
-from .audit import log_event, mention
+from .audit import invite_ref, log_event, mention
 from .ephemeral import delete_ephemeral, pop_pending, send_ephemeral
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,13 @@ async def _kick(bot: Bot, chat_id: int, user_id: int) -> bool:
     return True
 
 
+async def _release(bot: Bot, chat_id: int, user_id: int) -> None:
+    with suppress(TelegramBadRequest):
+        await bot.restrict_chat_member(
+            chat_id, user_id, permissions=UNMUTED
+        )
+
+
 async def _expire_ephemeral(
     bot: Bot,
     chat_id: int,
@@ -96,11 +103,19 @@ async def _expire_ephemeral(
     waiting.discard(key)
     pop_pending(chat_id, user_id)
     await delete_ephemeral(bot, chat_id, user_id, emid)
-    if await _kick(bot, chat_id, user_id):
+    if await get_kick(chat_id):
+        if await _kick(bot, chat_id, user_id):
+            await log_event(
+                bot,
+                chat_id,
+                f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
+            )
+    else:
+        await _release(bot, chat_id, user_id)
         await log_event(
             bot,
             chat_id,
-            f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
+            f"🔓 {mention(user)} didn't accept the rules within {ttl} sec — unmuted (kick disabled)",
         )
 
 
@@ -119,11 +134,19 @@ async def _expire_visible(
     waiting.discard(key)
     with suppress(TelegramBadRequest):
         await bot.delete_message(chat_id, message_id)
-    if await _kick(bot, chat_id, user_id):
+    if await get_kick(chat_id):
+        if await _kick(bot, chat_id, user_id):
+            await log_event(
+                bot,
+                chat_id,
+                f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
+            )
+    else:
+        await _release(bot, chat_id, user_id)
         await log_event(
             bot,
             chat_id,
-            f"👢 {mention(user)} didn't accept the rules within {ttl} sec — kicked",
+            f"🔓 {mention(user)} didn't accept the rules within {ttl} sec — unmuted (kick disabled)",
         )
 
 
@@ -188,17 +211,18 @@ async def on_join(event: ChatMemberUpdated, bot: Bot) -> None:
             )
 
     actor = event.from_user
+    via = invite_ref(event)
     if actor is not None and actor.id != user_id:
         await log_event(
             bot,
             chat_id,
-            f"➕ {mention(actor)} added {mention(user)} (waiting for rules acceptance)",
+            f"➕ {mention(actor)} added {mention(user)}{via} (waiting for rules acceptance)",
         )
     else:
         await log_event(
             bot,
             chat_id,
-            f"➕ {mention(user)} joined (waiting for rules acceptance)",
+            f"➕ {mention(user)} joined{via} (waiting for rules acceptance)",
         )
 
 

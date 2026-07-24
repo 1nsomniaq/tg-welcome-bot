@@ -32,6 +32,20 @@ def chat_ref(event: ChatMemberUpdated | Message) -> str:
     return f"<b>{title}</b>"
 
 
+def invite_ref(event: ChatMemberUpdated) -> str:
+    parts: list[str] = []
+    link = event.invite_link
+    if link is not None:
+        label = link.name or link.invite_link
+        safe = label.replace("<", "&lt;").replace(">", "&gt;")
+        parts.append(f' via <a href="{link.invite_link}">{safe}</a>')
+    if getattr(event, "via_chat_folder_invite_link", False):
+        parts.append(" via chat folder invite link")
+    if getattr(event, "via_join_request", False):
+        parts.append(" via join request")
+    return "".join(parts)
+
+
 async def _is_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
         m = await bot.get_chat_member(chat_id, user_id)
@@ -100,12 +114,15 @@ async def on_member_update(event: ChatMemberUpdated, bot: Bot) -> None:
         ChatMemberStatus.LEFT,
         ChatMemberStatus.KICKED,
     }:
+        via = invite_ref(event)
         if is_self_action:
-            await log_event(bot, event.chat.id, f"➕ {where}: {who} joined")
+            await log_event(
+                bot, event.chat.id, f"➕ {where}: {who} joined{via}"
+            )
         else:
             by = mention(actor)
             await log_event(
-                bot, event.chat.id, f"➕ {where}: {by} added {who}"
+                bot, event.chat.id, f"➕ {where}: {by} added {who}{via}"
             )
         return
 

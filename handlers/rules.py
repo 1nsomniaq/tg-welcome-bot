@@ -9,14 +9,17 @@ from aiogram.types import Message
 from storage import (
     get_button,
     get_captcha,
+    get_kick,
     get_rules,
     get_ttl,
     reset_button,
     reset_captcha,
+    reset_kick,
     reset_rules,
     reset_ttl,
     set_button,
     set_captcha,
+    set_kick,
     set_rules,
     set_ttl,
 )
@@ -271,3 +274,62 @@ async def cmd_resetcaptcha(message: Message, bot: Bot) -> None:
 
     await reset_captcha(message.chat.id)
     await reply_ephemeral(message, "Captcha mode reset to default (none).")
+
+
+@router.message(Command("kick"))
+async def cmd_kick(message: Message) -> None:
+    enabled = await get_kick(message.chat.id)
+    if enabled:
+        await reply_ephemeral(message,
+            "Kick on TTL expiry: <b>on</b>. "
+            "Newcomers who don't accept the rules within TTL are kicked."
+        )
+    else:
+        await reply_ephemeral(message,
+            "Kick on TTL expiry: <b>off</b>. "
+            "Newcomers who don't accept the rules within TTL are unmuted and stay in the chat."
+        )
+
+
+@router.message(Command("setkick"))
+async def cmd_setkick(
+    message: Message, command: CommandObject, bot: Bot
+) -> None:
+    if message.chat.type == ChatType.PRIVATE:
+        await reply_ephemeral(message, "This command only works in groups.")
+        return
+    if message.from_user is None or not await _is_admin(
+        bot, message.chat.id, message.from_user.id
+    ):
+        await reply_ephemeral(message, "Only admins can change the kick mode.")
+        return
+
+    arg = (command.args or "").strip().lower()
+    if arg in {"on", "1", "true", "yes"}:
+        await set_kick(message.chat.id, True)
+        await reply_ephemeral(message, "Kick on TTL expiry: <b>on</b>.")
+    elif arg in {"off", "0", "false", "no"}:
+        await set_kick(message.chat.id, False)
+        await reply_ephemeral(message,
+            "Kick on TTL expiry: <b>off</b>. "
+            "Newcomers will be unmuted after TTL instead of kicked."
+        )
+    else:
+        await reply_ephemeral(message,
+            "Usage: <code>/setkick on</code> or <code>/setkick off</code>."
+        )
+
+
+@router.message(Command("resetkick"))
+async def cmd_resetkick(message: Message, bot: Bot) -> None:
+    if message.chat.type == ChatType.PRIVATE:
+        await reply_ephemeral(message, "This command only works in groups.")
+        return
+    if message.from_user is None or not await _is_admin(
+        bot, message.chat.id, message.from_user.id
+    ):
+        await reply_ephemeral(message, "Only admins can reset the kick mode.")
+        return
+
+    await reset_kick(message.chat.id)
+    await reply_ephemeral(message, "Kick mode reset to default (on).")
